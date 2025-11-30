@@ -6,6 +6,8 @@ import { FolderPlus, Code, LogOut } from 'lucide-react';
 const Dashboard = () => {
     const [projects, setProjects] = useState([]);
     const [newProjectName, setNewProjectName] = useState('');
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
     const navigate = useNavigate();
 
     useEffect(() => {
@@ -13,22 +15,39 @@ const Dashboard = () => {
     }, []);
 
     const fetchProjects = async () => {
+        setLoading(true);
+        setError('');
         try {
             const res = await api.get('projects/');
-            setProjects(res.data);
+            const projectsData = res.data.results || res.data || [];
+            setProjects(Array.isArray(projectsData) ? projectsData : []);
         } catch (error) {
-            console.error(error);
+            console.error('Failed to fetch projects:', error);
+            setError('Failed to load projects. Please try again.');
+            if (error.response?.status === 401) {
+                // Token expired, redirect to login
+                localStorage.removeItem('access_token');
+                localStorage.removeItem('refresh_token');
+                navigate('/login');
+            }
+        } finally {
+            setLoading(false);
         }
     };
 
     const createProject = async () => {
         if (!newProjectName.trim()) return;
         try {
-            await api.post('projects/', { name: newProjectName });
+            await api.post('projects/', { 
+                name: newProjectName,
+                description: '',
+                visibility: 'private',
+                default_language: 'javascript'
+            });
             setNewProjectName('');
             fetchProjects();
         } catch (error) {
-            console.error(error);
+            console.error('Failed to create project:', error);
         }
     };
 
@@ -73,8 +92,25 @@ const Dashboard = () => {
                     </div>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '20px' }}>
-                    {projects.map((project) => (
+                {error && (
+                    <div style={{ 
+                        background: 'rgba(239, 68, 68, 0.1)', 
+                        color: '#ef4444', 
+                        padding: '1rem', 
+                        borderRadius: '8px', 
+                        marginBottom: '1rem' 
+                    }}>
+                        {error}
+                    </div>
+                )}
+
+                {loading ? (
+                    <div style={{ textAlign: 'center', padding: '4rem', color: 'var(--text-muted)' }}>
+                        <p>Loading projects...</p>
+                    </div>
+                ) : (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '20px' }}>
+                        {projects.map((project) => (
                         <Link to={`/editor/${project.id}`} key={project.id} style={{ textDecoration: 'none', color: 'inherit' }}>
                             <div className="glass-card" style={{ padding: '1.5rem', transition: 'transform 0.2s', cursor: 'pointer', height: '100%' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '1rem' }}>
@@ -83,20 +119,26 @@ const Dashboard = () => {
                                     </div>
                                     <h3 style={{ fontSize: '1.25rem', fontWeight: '600' }}>{project.name}</h3>
                                 </div>
-                                <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>
-                                    Created {new Date(project.created_at).toLocaleDateString()}
-                                </p>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.5rem' }}>
+                                    <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>
+                                        {project.file_count || 0} files
+                                    </p>
+                                    <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>
+                                        {new Date(project.created_at).toLocaleDateString()}
+                                    </p>
+                                </div>
                             </div>
                         </Link>
                     ))}
 
-                    {projects.length === 0 && (
-                        <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '4rem', color: 'var(--text-muted)' }}>
-                            <FolderPlus size={48} style={{ marginBottom: '1rem', opacity: 0.5 }} />
-                            <p>No projects yet. Create one to get started!</p>
-                        </div>
-                    )}
-                </div>
+                        {projects.length === 0 && (
+                            <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '4rem', color: 'var(--text-muted)' }}>
+                                <FolderPlus size={48} style={{ marginBottom: '1rem', opacity: 0.5 }} />
+                                <p>No projects yet. Create one to get started!</p>
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
         </div>
     );

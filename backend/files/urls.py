@@ -1,7 +1,16 @@
 from rest_framework.routers import DefaultRouter
-from .views import FileViewSet
+from django.urls import path, include
+from .views import FileViewSet, FolderViewSet
 
-router = DefaultRouter()
-router.register(r'', FileViewSet, basename='file')
+# File router
+file_router = DefaultRouter()
+file_router.register(r'', FileViewSet, basename='file')
 
-urlpatterns = router.urls
+# Folder router
+folder_router = DefaultRouter()
+folder_router.register(r'', FolderViewSet, basename='folder')
+
+urlpatterns = [
+    path('', include(file_router.urls)),
+    path('folders/', include(folder_router.urls)),
+]
