@@ -6,6 +6,7 @@ import { FileCode, Plus, ChevronLeft, Save, Trash2, Clock, FolderPlus } from 'lu
 
 const CodeEditor = () => {
     const { projectId } = useParams();
+    const [currentUser, setCurrentUser] = useState(null);
     const [files, setFiles] = useState([]);
     const [folders, setFolders] = useState([]);
     const [selectedFolderId, setSelectedFolderId] = useState(null);
@@ -16,8 +17,23 @@ const CodeEditor = () => {
     const [versions, setVersions] = useState([]);
     const [loadingVersions, setLoadingVersions] = useState(false);
     const [socket, setSocket] = useState(null);
+    const [activeUsers, setActiveUsers] = useState([]); // presence list
+    const [remoteCursors, setRemoteCursors] = useState({}); // username -> position
     const editorRef = useRef(null);
     const isRemoteUpdate = useRef(false);
+
+    useEffect(() => {
+        // Load current user once so we can identify presence/cursor updates
+        const fetchMe = async () => {
+            try {
+                const res = await api.get('auth/me/');
+                setCurrentUser(res.data);
+            } catch (error) {
+                console.error('Failed to fetch current user:', error);
+            }
+        };
+        fetchMe();
+    }, []);
 
     useEffect(() => {
         fetchFiles(selectedFolderId);
@@ -34,6 +50,13 @@ const CodeEditor = () => {
 
             newSocket.onopen = () => {
                 console.log('✅ Connected to WebSocket (real-time sync enabled)');
+                // Announce presence when we know who we are
+                if (currentUser?.username) {
+                    newSocket.send(JSON.stringify({
+                        type: 'presence_join',
+                        username: currentUser.username,
+                    }));
+                }
             };
 
             newSocket.onerror = (error) => {
@@ -57,6 +80,22 @@ const CodeEditor = () => {
                             editorRef.current.setPosition(currentPosition);
                         }
                         isRemoteUpdate.current = false;
+                    } else if (data.type === 'presence') {
+                        setActiveUsers((prev) => {
+                            const alreadyPresent = prev.includes(data.username);
+                            if (data.action === 'join' && !alreadyPresent) {
+                                return [...prev, data.username];
+                            }
+                            if (data.action === 'leave') {
+                                return prev.filter((u) => u !== data.username);
+                            }
+                            return prev;
+                        });
+                    } else if (data.type === 'cursor_update') {
+                        setRemoteCursors((prev) => ({
+                            ...prev,
+                            [data.username]: data.position,
+                        }));
                     }
                 } catch (error) {
                     console.error('Error parsing WebSocket message:', error);
@@ -70,6 +109,12 @@ const CodeEditor = () => {
 
             return () => {
                 if (newSocket.readyState === WebSocket.OPEN || newSocket.readyState === WebSocket.CONNECTING) {
+                    if (currentUser?.username) {
+                        newSocket.send(JSON.stringify({
+                            type: 'presence_leave',
+                            username: currentUser.username,
+                        }));
+                    }
                     newSocket.close();
                 }
             };
@@ -80,7 +125,8 @@ const CodeEditor = () => {
                 setSocket(null);
             }
         }
-    }, [selectedFile]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedFile, currentUser]);
 
     const fetchFiles = async (folderId = null) => {
         try {
@@ -202,6 +248,24 @@ const CodeEditor = () => {
             console.error('Failed to save file:', error);
             alert('Failed to save file');
         }
+    };
+
+    // Listen for cursor position changes and broadcast them
+    const handleEditorMount = (editor) => {
+        editorRef.current = editor;
+        editor.onDidChangeCursorPosition((e) => {
+            if (socket && socket.readyState === WebSocket.OPEN && currentUser?.username) {
+                const position = {
+                    lineNumber: e.position.lineNumber,
+                    column: e.position.column,
+                };
+                socket.send(JSON.stringify({
+                    type: 'cursor_update',
+                    username: currentUser.username,
+                    position,
+                }));
+            }
+        });
     };
 
     // Auto-save on Ctrl+S
@@ -376,6 +440,28 @@ const CodeEditor = () => {
                             >
                                 {socket && socket.readyState === WebSocket.OPEN ? '● Live' : '○ Offline'}
                             </span>
+                            <div style={{ marginLeft: '1rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                                {activeUsers.map((username) => {
+                                    const cursor = remoteCursors[username];
+                                    return (
+                                        <div
+                                            key={username}
+                                            style={{
+                                                padding: '0.15rem 0.5rem',
+                                                borderRadius: '999px',
+                                                background: 'rgba(15,23,42,0.8)',
+                                                border: '1px solid rgba(148,163,184,0.4)',
+                                                fontSize: '0.75rem',
+                                                color: '#e5e7eb',
+                                            }}
+                                            title={cursor ? `Line ${cursor.lineNumber}, Col ${cursor.column}` : 'Viewing file'}
+                                        >
+                                            {username}
+                                            {cursor && ` · L${cursor.lineNumber}`}
+                                        </div>
+                                    );
+                                })}
+                            </div>
                             <button 
                                 className="save-btn"
                                 onClick={saveFile}
@@ -405,7 +491,7 @@ const CodeEditor = () => {
                                     language={selectedFile?.language || 'javascript'}
                                     value={code}
                                     onChange={handleEditorChange}
-                                    onMount={(editor) => (editorRef.current = editor)}
+                                    onMount={handleEditorMount}
                                     theme="vs-dark"
                                     options={{
                                         minimap: { enabled: false },
