@@ -6,6 +6,7 @@ import { FolderPlus, Code, LogOut } from 'lucide-react';
 const Dashboard = () => {
     const [projects, setProjects] = useState([]);
     const [newProjectName, setNewProjectName] = useState('');
+    const [searchTerm, setSearchTerm] = useState('');
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const navigate = useNavigate();
@@ -14,11 +15,12 @@ const Dashboard = () => {
         fetchProjects();
     }, []);
 
-    const fetchProjects = async () => {
+    const fetchProjects = async (search = '') => {
         setLoading(true);
         setError('');
         try {
-            const res = await api.get('projects/');
+            const query = search ? `?search=${encodeURIComponent(search)}` : '';
+            const res = await api.get(`projects/${query}`);
             const projectsData = res.data.results || res.data || [];
             setProjects(Array.isArray(projectsData) ? projectsData : []);
         } catch (error) {
@@ -73,17 +75,35 @@ const Dashboard = () => {
             </nav>
 
             <div className="container" style={{ padding: '2rem 1rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-                    <h1 style={{ fontSize: '2rem', fontWeight: 'bold' }}>Your Projects</h1>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', gap: '1rem', flexWrap: 'wrap' }}>
+                    <div>
+                        <h1 style={{ fontSize: '2rem', fontWeight: 'bold' }}>Your Projects</h1>
+                        <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '0.25rem' }}>Select a project to open it in the editor.</p>
+                    </div>
 
-                    <div style={{ display: 'flex', gap: '10px' }}>
+                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
                         <input
                             type="text"
                             className="input-field"
-                            placeholder="New Project Name"
+                            placeholder="Search projects..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            style={{ width: '220px' }}
+                        />
+                        <button
+                            className="btn-primary"
+                            onClick={() => fetchProjects(searchTerm)}
+                            style={{ width: 'auto', paddingInline: '1rem' }}
+                        >
+                            Search
+                        </button>
+                        <input
+                            type="text"
+                            className="input-field"
+                            placeholder="New project name"
                             value={newProjectName}
                             onChange={(e) => setNewProjectName(e.target.value)}
-                            style={{ width: '250px' }}
+                            style={{ width: '220px' }}
                         />
                         <button className="btn-primary" onClick={createProject} style={{ width: 'auto' }}>
                             <FolderPlus size={18} style={{ marginRight: '8px' }} />

@@ -2,21 +2,27 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import Editor from '@monaco-editor/react';
 import api from '../api';
-import { FileCode, Plus, ChevronLeft, Save, Trash2 } from 'lucide-react';
+import { FileCode, Plus, ChevronLeft, Save, Trash2, Clock, FolderPlus } from 'lucide-react';
 
 const CodeEditor = () => {
     const { projectId } = useParams();
     const [files, setFiles] = useState([]);
+    const [folders, setFolders] = useState([]);
+    const [selectedFolderId, setSelectedFolderId] = useState(null);
     const [selectedFile, setSelectedFile] = useState(null);
     const [code, setCode] = useState('// Select a file to start editing');
     const [newFileName, setNewFileName] = useState('');
+    const [newFolderName, setNewFolderName] = useState('');
+    const [versions, setVersions] = useState([]);
+    const [loadingVersions, setLoadingVersions] = useState(false);
     const [socket, setSocket] = useState(null);
     const editorRef = useRef(null);
     const isRemoteUpdate = useRef(false);
 
     useEffect(() => {
-        fetchFiles();
-    }, [projectId]);
+        fetchFiles(selectedFolderId);
+        fetchFolders();
+    }, [projectId, selectedFolderId]);
 
     useEffect(() => {
         if (selectedFile) {
@@ -59,6 +65,9 @@ const CodeEditor = () => {
 
             setSocket(newSocket);
 
+            // Load version history whenever a new file is selected
+            fetchVersions(selectedFile.id);
+
             return () => {
                 if (newSocket.readyState === WebSocket.OPEN || newSocket.readyState === WebSocket.CONNECTING) {
                     newSocket.close();
@@ -73,12 +82,35 @@ const CodeEditor = () => {
         }
     }, [selectedFile]);
 
-    const fetchFiles = async () => {
+    const fetchFiles = async (folderId = null) => {
         try {
-            const res = await api.get(`files/?project=${projectId}`);
+            const folderParam = folderId ? `&folder=${folderId}` : '';
+            const res = await api.get(`files/?project=${projectId}${folderParam}`);
             setFiles(res.data.results || res.data); // Handle paginated or list response
         } catch (error) {
             console.error('Failed to fetch files:', error);
+        }
+    };
+
+    const fetchFolders = async () => {
+        try {
+            const res = await api.get(`files/folders/?project=${projectId}`);
+            setFolders(res.data.results || res.data || []);
+        } catch (error) {
+            console.error('Failed to fetch folders:', error);
+        }
+    };
+
+    const fetchVersions = async (fileId) => {
+        if (!fileId) return;
+        setLoadingVersions(true);
+        try {
+            const res = await api.get(`versions/?file_id=${fileId}`);
+            setVersions(res.data.results || res.data || []);
+        } catch (error) {
+            console.error('Failed to fetch versions:', error);
+        } finally {
+            setLoadingVersions(false);
         }
     };
 
@@ -97,6 +129,22 @@ const CodeEditor = () => {
             console.error('Failed to create file:', error);
             const errorMsg = error.response?.data?.name?.[0] || error.response?.data?.error || 'Failed to create file';
             alert(errorMsg);
+        }
+    };
+
+    const createFolder = async () => {
+        if (!newFolderName.trim()) return;
+        try {
+            await api.post('files/folders/', {
+                name: newFolderName,
+                project: parseInt(projectId),
+                parent: null,
+            });
+            setNewFolderName('');
+            fetchFolders();
+        } catch (error) {
+            console.error('Failed to create folder:', error);
+            alert('Failed to create folder');
         }
     };
 
@@ -120,6 +168,7 @@ const CodeEditor = () => {
     const handleFileClick = (file) => {
         setSelectedFile(file);
         setCode(file.content);
+        fetchVersions(file.id);
     };
 
     const handleEditorChange = (value) => {
@@ -138,6 +187,9 @@ const CodeEditor = () => {
             await api.patch(`files/${selectedFile.id}/`, {
                 content: code
             });
+
+            // Refresh versions after a successful save so the new snapshot appears
+            fetchVersions(selectedFile.id);
             // Show success feedback
             const saveBtn = document.querySelector('.save-btn');
             if (saveBtn) {
@@ -165,7 +217,7 @@ const CodeEditor = () => {
     }, [code, selectedFile]);
 
     return (
-        <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
+        <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: 'var(--bg-dark)' }}>
             {/* Sidebar */}
             <div style={{ width: '280px', background: 'var(--bg-card)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column' }}>
                 <div style={{ padding: '1rem', borderBottom: '1px solid var(--border)' }}>
@@ -176,17 +228,60 @@ const CodeEditor = () => {
                 </div>
 
                 <div style={{ padding: '1rem', borderBottom: '1px solid var(--border)' }}>
-                    <div style={{ display: 'flex', gap: '8px' }}>
+                    <div style={{ marginBottom: '0.75rem', display: 'flex', gap: '6px', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Folders</span>
+                        <button
+                            onClick={() => setSelectedFolderId(null)}
+                            style={{
+                                borderRadius: '999px',
+                                border: 'none',
+                                padding: '0.2rem 0.6rem',
+                                fontSize: '0.75rem',
+                                background: selectedFolderId === null ? 'rgba(59,130,246,0.2)' : 'transparent',
+                                color: selectedFolderId === null ? 'var(--primary)' : 'var(--text-muted)',
+                                cursor: 'pointer'
+                            }}
+                        >
+                            All files
+                        </button>
+                    </div>
+                    <div style={{ maxHeight: '120px', overflowY: 'auto', marginBottom: '0.75rem' }}>
+                        {folders.map((folder) => (
+                            <div
+                                key={folder.id}
+                                onClick={() => setSelectedFolderId(folder.id)}
+                                style={{
+                                    padding: '0.3rem 0.5rem',
+                                    borderRadius: '6px',
+                                    cursor: 'pointer',
+                                    fontSize: '0.8rem',
+                                    color: selectedFolderId === folder.id ? 'var(--primary)' : 'var(--text-muted)',
+                                    background: selectedFolderId === folder.id ? 'rgba(59,130,246,0.15)' : 'transparent'
+                                }}
+                            >
+                                {folder.name}
+                            </div>
+                        ))}
+                        {folders.length === 0 && (
+                            <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>No folders yet.</p>
+                        )}
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '0.25rem' }}>
                         <input
                             type="text"
                             className="input-field"
-                            placeholder="New File.js"
-                            value={newFileName}
-                            onChange={(e) => setNewFileName(e.target.value)}
-                            style={{ padding: '0.5rem' }}
+                            placeholder="New folder"
+                            value={newFolderName}
+                            onChange={(e) => setNewFolderName(e.target.value)}
+                            style={{ padding: '0.4rem', fontSize: '0.8rem' }}
                         />
-                        <button className="btn-primary" onClick={createFile} style={{ width: 'auto', padding: '0.5rem' }}>
-                            <Plus size={18} />
+                        <button
+                            className="btn-primary"
+                            onClick={createFolder}
+                            style={{ width: 'auto', padding: '0.4rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                            title="Create folder"
+                        >
+                            <FolderPlus size={16} />
                         </button>
                     </div>
                 </div>
@@ -302,22 +397,95 @@ const CodeEditor = () => {
                                 Save
                             </button>
                         </div>
-                        <Editor
-                            height="calc(100vh - 48px)"
-                            defaultLanguage={selectedFile?.language || 'javascript'}
-                            language={selectedFile?.language || 'javascript'}
-                            value={code}
-                            onChange={handleEditorChange}
-                            onMount={(editor) => (editorRef.current = editor)}
-                            theme="vs-dark"
-                            options={{
-                                minimap: { enabled: false },
-                                fontSize: 14,
-                                padding: { top: 20 },
-                                wordWrap: 'on',
-                                automaticLayout: true
-                            }}
-                        />
+                        <div style={{ display: 'flex', height: 'calc(100vh - 48px)' }}>
+                            <div style={{ flex: 1 }}>
+                                <Editor
+                                    height="100%"
+                                    defaultLanguage={selectedFile?.language || 'javascript'}
+                                    language={selectedFile?.language || 'javascript'}
+                                    value={code}
+                                    onChange={handleEditorChange}
+                                    onMount={(editor) => (editorRef.current = editor)}
+                                    theme="vs-dark"
+                                    options={{
+                                        minimap: { enabled: false },
+                                        fontSize: 14,
+                                        padding: { top: 20 },
+                                        wordWrap: 'on',
+                                        automaticLayout: true
+                                    }}
+                                />
+                            </div>
+
+                            {/* Version history sidebar */}
+                            <div style={{ width: '260px', borderLeft: '1px solid var(--border)', background: 'var(--bg-card)', display: 'flex', flexDirection: 'column' }}>
+                                <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <Clock size={16} />
+                                    <span style={{ fontSize: '0.85rem', fontWeight: 500 }}>Version History</span>
+                                </div>
+                                <div style={{ flex: 1, overflowY: 'auto', padding: '0.5rem 0.75rem' }}>
+                                    {loadingVersions ? (
+                                        <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Loading versions...</p>
+                                    ) : versions.length === 0 ? (
+                                        <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>No versions yet. Save the file to create snapshots.</p>
+                                    ) : (
+                                        versions.map((version) => (
+                                            <div
+                                                key={version.id}
+                                                style={{
+                                                    padding: '0.5rem 0.6rem',
+                                                    borderRadius: '6px',
+                                                    marginBottom: '0.4rem',
+                                                    background: 'rgba(15, 23, 42, 0.6)',
+                                                    border: '1px solid rgba(148, 163, 184, 0.3)'
+                                                }}
+                                            >
+                                                <div style={{ fontSize: '0.8rem', color: '#e5e7eb' }}>
+                                                    {new Date(version.created_at).toLocaleTimeString()}
+                                                </div>
+                                                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
+                                                    {version.created_by_username || 'Unknown user'}
+                                                </div>
+                                                {version.description && (
+                                                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
+                                                        {version.description}
+                                                    </div>
+                                                )}
+                                                <button
+                                                    onClick={async () => {
+                                                        if (!confirm('Revert to this version? A new snapshot of the current content will be created first.')) return;
+                                                        try {
+                                                            await api.post(`versions/${version.id}/revert/`);
+                                                            // Refresh file content and versions
+                                                            const res = await api.get(`files/${selectedFile.id}/`);
+                                                            setSelectedFile(res.data);
+                                                            setCode(res.data.content);
+                                                            fetchVersions(selectedFile.id);
+                                                        } catch (error) {
+                                                            console.error('Failed to revert version:', error);
+                                                            alert('Failed to revert version');
+                                                        }
+                                                    }}
+                                                    style={{
+                                                        marginTop: '0.25rem',
+                                                        width: '100%',
+                                                        padding: '0.3rem 0.5rem',
+                                                        fontSize: '0.75rem',
+                                                        borderRadius: '4px',
+                                                        border: 'none',
+                                                        background: 'rgba(59, 130, 246, 0.15)',
+                                                        color: 'var(--primary)',
+                                                        cursor: 'pointer'
+                                                    }}
+                                                >
+                                                    Revert
+                                                </button>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            </div>
+                        </div>
                     </>
                 ) : (
                     <div className="flex-center" style={{ flex: 1, flexDirection: 'column', color: 'var(--text-muted)' }}>

@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from .models import File, Folder
+from versions.models import Version
 from .serializers import FileSerializer, FileListSerializer, FolderSerializer
 from projects.models import Project
 
@@ -77,8 +78,21 @@ class FileViewSet(viewsets.ModelViewSet):
         serializer.save()
 
     def perform_update(self, serializer):
-        """Set updated_by when updating file."""
-        serializer.save(updated_by=self.request.user)
+        """Set updated_by when updating file and create a snapshot if content changed."""
+        instance = self.get_object()
+        old_content = instance.content
+
+        # Let DRF validate and update the instance
+        file_obj = serializer.save(updated_by=self.request.user)
+
+        # If content was part of the update and actually changed, create a Version snapshot
+        if 'content' in serializer.validated_data and old_content != file_obj.content:
+            Version.objects.create(
+                file=file_obj,
+                content=old_content,
+                created_by=self.request.user,
+                description="Auto-snapshot before save"
+            )
 
     @action(detail=True, methods=['post'])
     def rename(self, request, pk=None):
