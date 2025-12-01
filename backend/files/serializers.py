@@ -33,8 +33,9 @@ class FileListSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = File
-        fields = ('id', 'name', 'path', 'full_path', 'language', 'size', 
-                  'line_count', 'created_by_username', 'updated_by_username',
+        # Include content so the frontend gets the latest saved text when listing files
+        fields = ('id', 'name', 'path', 'full_path', 'language', 'size',
+                  'content', 'line_count', 'created_by_username', 'updated_by_username',
                   'created_at', 'updated_at')
         read_only_fields = ('id', 'created_at', 'updated_at', 'full_path', 
                           'line_count', 'size')
