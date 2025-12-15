@@ -41,7 +41,7 @@
 
 ## Features
 - **User Auth**: Register and Login (JWT Authentication).
-- **Projects**: Create and manage projects.
-- **Files**: Create and manage files within projects.
+- **Projects**: Create and manage projects on the personal dashboard.
+- **Files**: Create and manage files within projects like with ease of handling.
 - **Editor**: Monaco Editor integration.
 - **Real-Time**: Collaborative editing using WebSockets.
