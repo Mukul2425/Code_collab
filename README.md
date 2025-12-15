@@ -40,7 +40,7 @@
    ```
 
 ## Features
-- **User Auth**: Register and Login (JWT).
+- **User Auth**: Register and Login (JWT Authentication).
 - **Projects**: Create and manage projects.
 - **Files**: Create and manage files within projects.
 - **Editor**: Monaco Editor integration.
