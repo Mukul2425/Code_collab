@@ -45,3 +45,6 @@
 - **Files**: Create and manage files within projects like with ease of handling.
 - **Editor**: Monaco Editor integration.
 - **Real-Time**: Collaborative editing using WebSockets.
+
+## Future Implementations
+- TO BE INTEGRATED WITH TRENDMIA, A COLLABORATIVE PLATFORM , THAT WILL MAKE TRENDMIA, CODE_COLLAB A GREAT COMBINED PLATFORM WHICH PERSONIFIES GITHUB AND LINKEDIN IN A UNIQUE WAY.
